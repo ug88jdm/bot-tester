@@ -178,7 +178,7 @@ const LEVELS = [
   {
     name: 'Mind the Gap',
     hint: 'An acid-filled chasm blocks the way. Bridges only rise 12 planks at a time, so you will need more than one builder. A blocker buys you time.',
-    bots: 12, need: 9, rate: 4, time: 200,
+    bots: 12, need: 11, rate: 4, time: 200,
     skills: { build: 4, block: 2 },
     pal: { sky: ['#0b1d2c', '#173a4a'], a: [92, 110, 120], b: [70, 84, 96], top: [110, 200, 170] },
     entrance: { x: 60, y: 150 },
@@ -201,7 +201,7 @@ const LEVELS = [
     exit: { x: 560, y: 300 },
     build(L) {
       L.ground(0, 640, 300, H, 2);
-      L.ground(296, 340, 70, 300, 2);
+      L.ground(296, 340, 70, 320, 2);
       L.clear(345, 294, 45, 30);
       L.acid(345, 298, 45, 26);
       L.rect(345, 324, 45, 6, STEEL);
@@ -246,8 +246,8 @@ const LEVELS = [
   },
   {
     name: 'Grand Descent',
-    hint: 'Three tiers down to the gate. You will need most of your toolkit, and the bottom tier has an acid pit of its own.',
-    bots: 20, need: 14, rate: 4, time: 300,
+    hint: 'Three tiers down to the gate. Pick your digging spots carefully, guard the open edge, and the bottom tier has an acid pit of its own.',
+    bots: 20, need: 15, rate: 4, time: 300,
     skills: { dig: 3, tunnel: 2, block: 2, build: 3, spring: 2, glide: 2 },
     pal: { sky: ['#06141c', '#0f2e36'], a: [70, 110, 110], b: [52, 84, 86], top: [120, 230, 200] },
     entrance: { x: 60, y: 20 },
@@ -377,7 +377,7 @@ function levelAPI(acids) {
 // ---------------------------------------------------------------------------
 let G = null;
 let progress = { unlocked: 0, best: {} };
-try { const p = JSON.parse(localStorage.getItem('wanderbots-progress')); if (p && typeof p.unlocked === 'number') progress = p; } catch (e) {}
+try { const p = JSON.parse(localStorage.getItem('wanderbots-progress')); if (p && Number.isInteger(p.unlocked)) progress = { unlocked: Math.max(0, Math.min(LEVELS.length - 1, p.unlocked)), best: (p.best && typeof p.best === 'object') ? p.best : {} }; } catch (e) {}
 function saveProgress() { try { localStorage.setItem('wanderbots-progress', JSON.stringify(progress)); } catch (e) {} }
 
 let botId = 0;
@@ -459,13 +459,14 @@ function updateBot(b) {
   }
   const e = G.exit;
   if ((b.state === 'walk' || b.state === 'fall' || b.state === 'glide' || b.state === 'jump') &&
-      Math.abs(b.x - e.x) <= 4 && b.y <= e.y && b.y >= e.y - 12) {
+      Math.abs(b.x - e.x) <= 4 && b.y <= e.y + 3 && b.y >= e.y - 12) {
     setState(b, 'exit'); b.y = e.y; sfx('exit');
   }
 }
 
 function doWalk(b) {
   const nx = b.x + b.dir;
+  if (nx < 0 || nx >= W) { b.dir = -b.dir; return; }
   for (const o of G.bots) {
     if (o === b || Math.abs(o.y - b.y) > 9) continue;
     if (o.state === 'block' && Math.abs(nx - o.x) <= 4 && Math.abs(nx - o.x) < Math.abs(b.x - o.x)) {
@@ -518,7 +519,7 @@ function doGlide(b) {
 
 function doClimb(b) {
   if (b.t % 2) return;
-  if (solid(b.x, b.y - 11)) { b.dir = -b.dir; setState(b, 'fall'); return; }
+  if (b.y < 12 || solid(b.x, b.y - 11)) { b.dir = -b.dir; setState(b, 'fall'); return; }
   b.y--;
   if (!solid(b.x + b.dir, b.y)) { b.x += b.dir; setState(b, 'walk'); }
 }
@@ -537,8 +538,9 @@ function doBuild(b) {
   if (b.bricks <= 0) setState(b, 'walk');
 }
 
+// Earth at body height (ignores 1-2 px bumps a walker can step over).
 function dirtAhead(b, range) {
-  for (let i = 1; i <= range; i++) for (let r = 0; r <= 9; r++) if (soft(T(b.x + b.dir * i, b.y - r))) return true;
+  for (let i = 1; i <= range; i++) for (let r = 3; r <= 9; r++) if (soft(T(b.x + b.dir * i, b.y - r))) return true;
   return false;
 }
 
@@ -582,12 +584,13 @@ function doJump(b) {
     if (b.vx !== 0) {
       const nx = b.fx + b.vx / steps;
       const rx = Math.round(nx), ry = Math.round(b.fy);
-      if (solid(rx, ry - 4) || solid(rx, ry - 8)) b.vx = 0;
+      let wall = false; for (let r = 3; r <= 9; r++) if (solid(rx, ry - r)) wall = true;
+      if (wall) b.vx = 0;
       else {
         b.fx = nx;
         if (solid(rx, ry)) {
-          let h = 0; while (h < 5 && solid(rx, ry - h)) h++;
-          if (h < 5) b.fy -= h; else { b.fx -= b.vx / steps; b.vx = 0; }
+          let h = 0; while (h < 3 && solid(rx, ry - h)) h++;
+          if (h < 3) b.fy -= h; else { b.fx -= b.vx / steps; b.vx = 0; }
         }
       }
     }
@@ -618,8 +621,14 @@ function canAssign(b, s) {
   if (s === 'climb') return !b.climber;
   if (s === 'glide') return !b.glider;
   if (!WORKING.includes(b.state) || b.state === s) return false;
-  if (s === 'tunnel') return dirtAhead(b, 12);
-  if (s === 'dig') return T(b.x, b.y + 1) !== STEEL;
+  if (s === 'tunnel') {
+    for (let i = 1; i <= 5; i++) for (let r = 0; r <= 9; r++) if (T(b.x + b.dir * i, b.y - r) === STEEL) return false;
+    return dirtAhead(b, 12);
+  }
+  if (s === 'dig') {
+    for (let i = -1; i <= 1; i++) if (T(b.x + i, b.y + 1) === STEEL) return false;
+    return true;
+  }
   return true;
 }
 function assign(b, s) {
@@ -927,6 +936,7 @@ function skillIcon(id) {
 
 function buildHUD() {
   const box = $('skills'); box.innerHTML = '';
+  requestAnimationFrame(fit);
   for (const s of SKILLS) {
     const btn = document.createElement('button');
     btn.className = 'btn skill'; btn.dataset.id = s.id; btn.title = `${s.name}: ${s.desc}`;
@@ -1005,7 +1015,7 @@ function showResult(pass, why) {
   hideAll(); $('result').classList.remove('hidden');
   const last = G.index === LEVELS.length - 1;
   $('resTitle').innerHTML = pass ? (last ? '<span class="pass">All levels complete!</span>' : '<span class="pass">Level complete</span>') : '<span class="fail">Not enough bots made it</span>';
-  $('resText').textContent = why === 'time' ? 'Time ran out.' : pass ? (last ? 'Every crate of bots made it home. Nice work.' : 'The warp gate hums happily.') : 'Have another go: try pausing to plan your moves.';
+  $('resText').textContent = why === 'time' && !pass ? 'Time ran out.' : why === 'time' ? 'Time ran out, but enough bots made it.' : pass ? (last ? 'Every crate of bots made it home. Nice work.' : 'The warp gate hums happily.') : 'Have another go: try pausing to plan your moves.';
   const pct = Math.round(G.saved / G.def.bots * 100);
   $('resStats').innerHTML = `<div><b>${G.saved}</b>saved</div><div><b>${G.def.need}</b>needed</div><div><b>${pct}%</b>rescued</div>`;
   $('resNext').classList.toggle('hidden', !pass || last);
@@ -1020,12 +1030,12 @@ $('resMenu').onclick = showMenu;
 $('resRetry').onclick = () => showBrief(G.index);
 $('resNext').onclick = () => showBrief(G.index + 1);
 $('bMenu').onclick = showMenu;
-$('bRestart').onclick = () => { if (G) { startLevel(G.index); begin(); } };
+$('bRestart').onclick = () => { if (G && G.running) { startLevel(G.index); begin(); } };
 $('bFinish').onclick = () => { if (G && G.running && !G.over) endLevel('done'); };
-$('bPause').onclick = () => { if (G) { G.paused = !G.paused; updateHUD(); } };
-$('bFast').onclick = () => { if (G) { G.fast = !G.fast; updateHUD(); } };
-$('rateUp').onclick = () => { if (G && G.rate < 10) { G.rate++; updateHUD(); } };
-$('rateDn').onclick = () => { if (G && G.rate > G.minRate) { G.rate--; updateHUD(); } };
+$('bPause').onclick = () => { if (G && G.running) { G.paused = !G.paused; updateHUD(); } };
+$('bFast').onclick = () => { if (G && G.running) { G.fast = !G.fast; updateHUD(); } };
+$('rateUp').onclick = () => { if (G && G.running && G.rate < 10) { G.rate++; updateHUD(); } };
+$('rateDn').onclick = () => { if (G && G.running && G.rate > G.minRate) { G.rate--; updateHUD(); } };
 $('bSound').onclick = () => { soundOn = !soundOn; $('bSound').textContent = 'Sound: ' + (soundOn ? 'on' : 'off'); };
 
 function toWorld(e) {

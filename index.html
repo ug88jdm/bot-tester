@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wanderbots</title>
+<style>
+:root{
+  --bg:#0a0d18; --panel:#141a2c; --panel2:#1d2542; --line:#2c375e;
+  --text:#e8edff; --muted:#8e9ac2; --accent:#4dd0e1; --warn:#ffb74d; --bad:#ef5350; --good:#7bd88f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;user-select:none}
+#app{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:8px;gap:8px}
+#stage{position:relative;line-height:0}
+canvas{display:block;image-rendering:pixelated;border-radius:8px;cursor:crosshair;background:#000;
+  box-shadow:0 0 0 1px var(--line),0 10px 40px rgba(0,0,0,.5)}
+#status{display:flex;gap:18px;font-size:14px;color:var(--muted);flex-wrap:wrap;justify-content:center;min-height:20px}
+#status b{color:var(--text);font-variant-numeric:tabular-nums}
+#status .need{color:var(--warn)}
+#hud{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:stretch}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:8px;
+  font:inherit;font-size:13px;cursor:pointer;padding:6px 10px;transition:background .1s,border-color .1s}
+.btn:hover{background:var(--panel2)}
+.btn:disabled{opacity:.35;cursor:default}
+.skill{width:74px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;position:relative}
+.skill .ico{width:32px;height:32px}
+.skill .nm{font-size:12px}
+.skill .ct{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.skill .key{position:absolute;top:3px;left:6px;font-size:10px;color:var(--muted)}
+.skill.sel{border-color:var(--accent);background:#173040;box-shadow:0 0 0 1px var(--accent) inset}
+.skill.empty .ct{color:var(--bad)}
+.group{display:flex;gap:6px;align-items:stretch}
+.ctl{display:flex;flex-direction:column;gap:4px;justify-content:center}
+.ctl .btn{padding:4px 10px}
+.rate{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px;color:var(--muted)}
+.rate .row{display:flex;gap:4px;align-items:center}
+.rate b{color:var(--text);font-size:16px;min-width:22px;text-align:center}
+.rate .btn{padding:2px 8px}
+.on{border-color:var(--warn)!important;color:var(--warn)}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,9,18,.82);backdrop-filter:blur(2px);border-radius:8px;line-height:1.4}
+.hidden{display:none!important}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 26px;
+  max-width:min(92%,720px);max-height:92%;overflow:auto;text-align:center}
+.card h1{margin:0 0 4px;font-size:38px;letter-spacing:2px;color:var(--accent)}
+.card h2{margin:0 0 6px;font-size:24px}
+.card p{margin:6px 0;color:var(--muted)}
+.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}
+.lvl{padding:12px 8px;text-align:left}
+.lvl .n{font-size:11px;color:var(--muted)}
+.lvl .t{font-size:15px;font-weight:600}
+.lvl .s{font-size:11px;color:var(--good)}
+.help{text-align:left;font-size:13px;color:var(--muted);columns:2;column-gap:24px;margin-top:10px}
+.help div{break-inside:avoid;margin-bottom:4px}
+.help b{color:var(--text)}
+.stats{display:flex;gap:16px;justify-content:center;margin:12px 0;flex-wrap:wrap}
+.stats div{background:var(--panel2);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted)}
+.stats b{display:block;font-size:20px;color:var(--text)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+.chip{background:var(--panel2);border-radius:20px;padding:3px 10px;font-size:12px}
+.primary{background:var(--accent);color:#06222a;border-color:var(--accent);font-weight:700;padding:8px 18px;font-size:15px}
+.primary:hover{background:#7fe3ee}
+.actions{display:flex;gap:10px;justify-content:center;margin-top:14px}
+.pass{color:var(--good)} .fail{color:var(--bad)}
+@media (max-width:700px){.levels{grid-template-columns:repeat(2,1fr)}.help{columns:1}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="status"></div>
+  <div id="stage">
+    <canvas id="cv" width="1280" height="720"></canvas>
+    <div id="menu" class="overlay">
+      <div class="card">
+        <h1>WANDERBOTS</h1>
+        <p>A crate of tiny maintenance robots has been dumped into the caves. They walk wherever their feet take them, straight into acid if nobody stops them.<br>Hand out jobs to steer enough of them into the warp gate.</p>
+        <div class="levels" id="levelList"></div>
+        <div class="help">
+          <div><b>Click a skill</b>, then <b>click a bot</b> to give it that job.</div>
+          <div><b>1–7</b> pick a skill &nbsp; <b>Space/P</b> pause</div>
+          <div><b>F</b> fast-forward &nbsp; <b>R</b> restart &nbsp; <b>Esc</b> menu</div>
+          <div><b>+ / −</b> change how fast bots drop in</div>
+          <div>You can hand out skills while paused.</div>
+          <div>Bots survive falls of about 90 px. Acid is always fatal.</div>
+          <div>Blocked or sprung bots can be given Build, Tunnel or Dig to put them back to work.</div>
+          <div>Steel (grey plates) can't be dug or tunnelled.</div>
+        </div>
+      </div>
+    </div>
+    <div id="brief" class="overlay hidden">
+      <div class="card">
+        <p id="briefNum"></p>
+        <h2 id="briefTitle"></h2>
+        <p id="briefHint"></p>
+        <div class="stats" id="briefStats"></div>
+        <div class="chips" id="briefSkills"></div>
+        <div class="actions">
+          <button class="btn" id="briefBack">Back</button>
+          <button class="btn primary" id="briefGo">Start</button>
+        </div>
+      </div>
+    </div>
+    <div id="result" class="overlay hidden">
+      <div class="card">
+        <h2 id="resTitle"></h2>
+        <p id="resText"></p>
+        <div class="stats" id="resStats"></div>
+        <div class="actions">
+          <button class="btn" id="resMenu">Menu</button>
+          <button class="btn" id="resRetry">Retry</button>
+          <button class="btn primary" id="resNext">Next level</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="hud">
+    <div class="rate"><span>Drop rate</span>
+      <div class="row"><button class="btn" id="rateDn">−</button><b id="rateV">5</b><button class="btn" id="rateUp">+</button></div>
+    </div>
+    <div class="group" id="skills"></div>
+    <div class="ctl">
+      <button class="btn" id="bPause">Pause</button>
+      <button class="btn" id="bFast">Fast ×3</button>
+    </div>
+    <div class="ctl">
+      <button class="btn" id="bRestart">Restart</button>
+      <button class="btn" id="bFinish" title="End the level now; bots still out are lost">Finish</button>
+    </div>
+    <div class="ctl">
+      <button class="btn" id="bSound">Sound: on</button>
+      <button class="btn" id="bMenu">Menu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const W = 640, H = 360, S = 2, TPS = 25, SAFE_FALL = 90;
+const EMPTY = 0, DIRT = 1, STEEL = 2, BRICK = 3;
+
+const SKILLS = [
+  { id: 'climb',  name: 'Climb',  key: '1', desc: 'Scales vertical walls. Permanent.' },
+  { id: 'glide',  name: 'Glide',  key: '2', desc: 'Opens a canopy so long falls are safe. Permanent.' },
+  { id: 'block',  name: 'Block',  key: '3', desc: 'Stands firm and turns other bots around.' },
+  { id: 'spring', name: 'Spring', key: '4', desc: 'Turns into a springboard that launches walkers forward.' },
+  { id: 'build',  name: 'Build',  key: '5', desc: 'Lays a rising bridge of 12 planks.' },
+  { id: 'tunnel', name: 'Tunnel', key: '6', desc: 'Bores sideways through earth.' },
+  { id: 'dig',    name: 'Dig',    key: '7', desc: 'Digs straight down.' },
+];
+
+// ---------------------------------------------------------------------------
+// Levels
+// ---------------------------------------------------------------------------
+const LEVELS = [
+  {
+    name: 'Dig In',
+    hint: 'The bots are stranded on a slab of earth. Have one dig down to the cave floor. Careful: there is a steel plate under the middle.',
+    bots: 10, need: 7, rate: 5, time: 180,
+    skills: { dig: 3, block: 1 },
+    pal: { sky: ['#1a1030', '#3a1d3a'], a: [139, 92, 64], b: [104, 66, 48], top: [120, 190, 90] },
+    entrance: { x: 320, y: 70 },
+    exit: { x: 592, y: 236 },
+    build(L) {
+      L.ground(0, 640, 236, H, 2);
+      L.ground(110, 530, 150, 205, 1);
+      L.rect(102, 100, 8, 105, STEEL);
+      L.rect(530, 100, 8, 105, STEEL);
+      L.rect(250, 195, 140, 10, STEEL);
+      L.ellipse(40, 236, 30, 18, DIRT);
+    },
+  },
+  {
+    name: 'Mind the Gap',
+    hint: 'An acid-filled chasm blocks the way. Bridges only rise 12 planks at a time, so you will need more than one builder. A blocker buys you time.',
+    bots: 12, need: 9, rate: 4, time: 200,
+    skills: { build: 4, block: 2 },
+    pal: { sky: ['#0b1d2c', '#173a4a'], a: [92, 110, 120], b: [70, 84, 96], top: [110, 200, 170] },
+    entrance: { x: 60, y: 150 },
+    exit: { x: 590, y: 195 },
+    build(L) {
+      L.ground(0, 250, 210, H, 2);
+      L.ground(312, 640, 195, H, 2);
+      L.ground(250, 312, 336, H, 1);
+      L.acid(250, 318, 62, 18);
+      L.rect(150, 290, 40, 30, STEEL);
+    },
+  },
+  {
+    name: 'Over the Wall',
+    hint: 'A towering pillar stands between the bots and home. Climbers can scale it, but the drop on the far side is a long one.',
+    bots: 10, need: 8, rate: 5, time: 210,
+    skills: { climb: 10, glide: 10 },
+    pal: { sky: ['#101a12', '#24361f'], a: [120, 104, 70], b: [92, 80, 52], top: [150, 210, 80] },
+    entrance: { x: 100, y: 230 },
+    exit: { x: 560, y: 300 },
+    build(L) {
+      L.ground(0, 640, 300, H, 2);
+      L.ground(296, 340, 70, 300, 2);
+      L.clear(345, 294, 45, 30);
+      L.acid(345, 298, 45, 26);
+      L.rect(345, 324, 45, 6, STEEL);
+      L.ellipse(210, 300, 26, 10, DIRT);
+    },
+  },
+  {
+    name: 'Tunnel Vision',
+    hint: 'Three hills and a steel step. Tunnelling handles earth, but steel needs another approach.',
+    bots: 15, need: 12, rate: 5, time: 240,
+    skills: { tunnel: 4, build: 2, block: 1 },
+    pal: { sky: ['#1c1408', '#3b2a12'], a: [150, 112, 60], b: [120, 86, 44], top: [210, 180, 90] },
+    entrance: { x: 60, y: 200 },
+    exit: { x: 612, y: 280 },
+    build(L) {
+      L.ground(0, 640, 280, H, 2);
+      L.ellipse(170, 282, 45, 92, DIRT);
+      L.ground(290, 332, 150, 282, 2);
+      L.rect(395, 270, 30, 12, STEEL);
+      L.ellipse(520, 282, 55, 110, DIRT);
+      L.rect(500, 200, 40, 8, STEEL);
+    },
+  },
+  {
+    name: 'Spring Loaded',
+    hint: 'Two acid pits and a ledge. A bot turned into a springboard will fling everyone who walks onto it. Place it close to the edge.',
+    bots: 20, need: 15, rate: 5, time: 240,
+    skills: { spring: 5, block: 2 },
+    pal: { sky: ['#0d0b24', '#24184a'], a: [96, 80, 140], b: [72, 58, 110], top: [170, 140, 240] },
+    entrance: { x: 50, y: 190 },
+    exit: { x: 600, y: 240 },
+    build(L) {
+      L.ground(0, 160, 250, H, 2);
+      L.ground(160, 190, 330, H, 0);
+      L.acid(160, 272, 30, 58);
+      L.ground(190, 330, 250, H, 2);
+      L.ground(330, 450, 228, H, 2);
+      L.ground(450, 482, 330, H, 0);
+      L.acid(450, 262, 32, 68);
+      L.ground(482, 640, 240, H, 2);
+    },
+  },
+  {
+    name: 'Grand Descent',
+    hint: 'Three tiers down to the gate. You will need most of your toolkit, and the bottom tier has an acid pit of its own.',
+    bots: 20, need: 14, rate: 4, time: 300,
+    skills: { dig: 3, tunnel: 2, block: 2, build: 3, spring: 2, glide: 2 },
+    pal: { sky: ['#06141c', '#0f2e36'], a: [70, 110, 110], b: [52, 84, 86], top: [120, 230, 200] },
+    entrance: { x: 60, y: 20 },
+    exit: { x: 605, y: 240 },
+    build(L) {
+      L.ground(0, 640, 340, H, 2);
+      L.acid(0, 326, 400, 14);
+      L.ground(0, 300, 70, 95, 2);
+      L.rect(0, 88, 140, 7, STEEL);
+      L.rect(300, 30, 10, 65, STEEL);
+      L.ground(140, 560, 155, 180, 2);
+      L.ellipse(360, 150, 32, 58, DIRT);
+      L.rect(560, 110, 10, 70, STEEL);
+      L.ground(400, 640, 240, 262, 2);
+      L.rect(400, 200, 8, 62, STEEL);
+      L.clear(500, 236, 35, 26);
+      L.acid(500, 244, 35, 14);
+      L.rect(500, 258, 35, 4, STEEL);
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Terrain
+// ---------------------------------------------------------------------------
+const terr = new Uint8Array(W * H);
+const tcv = document.createElement('canvas'); tcv.width = W; tcv.height = H;
+const tctx = tcv.getContext('2d');
+const timg = tctx.createImageData(W, H);
+const tpix = new Uint32Array(timg.data.buffer);
+let dirty = null;
+
+function T(x, y) {
+  if (x < 0 || x >= W) return STEEL;
+  if (y < 0 || y >= H) return EMPTY;
+  return terr[y * W + x];
+}
+function solid(x, y) { return T(x, y) !== EMPTY; }
+function soft(t) { return t === DIRT || t === BRICK; }
+function setT(x, y, v) {
+  if (x < 0 || x >= W || y < 0 || y >= H) return;
+  terr[y * W + x] = v;
+  markDirty(x, y, x, y);
+}
+function markDirty(x0, y0, x1, y1) {
+  if (!dirty) dirty = { x0, y0, x1, y1 };
+  else {
+    dirty.x0 = Math.min(dirty.x0, x0); dirty.y0 = Math.min(dirty.y0, y0);
+    dirty.x1 = Math.max(dirty.x1, x1); dirty.y1 = Math.max(dirty.y1, y1);
+  }
+}
+function hash(x, y) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function rgba(r, g, b) { return (255 << 24) | (b << 16) | (g << 8) | r; }
+function colorAt(x, y) {
+  const t = terr[y * W + x];
+  if (t === EMPTY) return 0;
+  const pal = G.def.pal;
+  if (t === DIRT) {
+    const coarse = (hash(x >> 3, y >> 3) & 255) / 255;
+    const mid = (hash(x >> 1, y >> 1) & 255) / 255;
+    const k = coarse * 0.55 + mid * 0.45;
+    let r = pal.a[0] + (pal.b[0] - pal.a[0]) * k;
+    let g = pal.a[1] + (pal.b[1] - pal.a[1]) * k;
+    let b = pal.a[2] + (pal.b[2] - pal.a[2]) * k;
+    if ((hash(x, y) & 63) === 0) { r *= 1.25; g *= 1.25; b *= 1.25; }
+    const up1 = !solid(x, y - 1), up2 = !solid(x, y - 2), up3 = !solid(x, y - 3);
+    if (up1 || up2) { r = pal.top[0]; g = pal.top[1]; b = pal.top[2];
+      if (!up1) { r *= .8; g *= .8; b *= .8; } }
+    else if (up3) { r = r * .5 + pal.top[0] * .3; g = g * .5 + pal.top[1] * .3; b = b * .5 + pal.top[2] * .3; }
+    if (!solid(x, y + 1)) { r *= .65; g *= .65; b *= .65; }
+    if (!solid(x - 1, y) || !solid(x + 1, y)) { r *= .85; g *= .85; b *= .85; }
+    return rgba(Math.min(255, r | 0), Math.min(255, g | 0), Math.min(255, b | 0));
+  }
+  if (t === STEEL) {
+    const lx = ((x % 16) + 16) % 16, ly = ((y % 12) + 12) % 12;
+    let v = 128 + ((hash(x, y) & 15) - 8);
+    if (lx === 0 || ly === 0) v = 84;
+    else if (lx === 1 || ly === 1) v = 168;
+    else if ((lx === 3 || lx === 13) && (ly === 3 || ly === 9)) v = 196;
+    return rgba(v - 6, v, v + 12);
+  }
+  // brick / plank
+  let v = 1 - ((y % 2) ? 0.15 : 0) - (hash(x, y) & 7) / 60;
+  return rgba(220 * v | 0, 168 * v | 0, 96 * v | 0);
+}
+function refreshTerrain(full) {
+  let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
+  if (!full) {
+    if (!dirty) return;
+    x0 = Math.max(0, dirty.x0 - 1); y0 = Math.max(0, dirty.y0 - 1);
+    x1 = Math.min(W - 1, dirty.x1 + 1); y1 = Math.min(H - 1, dirty.y1 + 3);
+  }
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tpix[y * W + x] = colorAt(x, y);
+  tctx.putImageData(timg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+  dirty = null;
+}
+
+function levelAPI(acids) {
+  const seed = Math.random() * 100;
+  const n1 = x => Math.sin(x * 0.07 + seed) * 0.6 + Math.sin(x * 0.19 + seed * 1.7) * 0.4;
+  const fill = (x, y, t) => { if (x >= 0 && x < W && y >= 0 && y < H) terr[y * W + x] = t; };
+  return {
+    rect(x, y, w, h, t = DIRT) { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) fill(i, j, t); },
+    clear(x, y, w, h) { this.rect(x, y, w, h, EMPTY); },
+    ground(x0, x1, top, bottom = H, rough = 2, t = DIRT) {
+      for (let x = x0; x < x1; x++) {
+        const tt = top + Math.round(n1(x) * rough);
+        for (let y = tt; y < bottom; y++) fill(x, y, t);
+      }
+    },
+    ellipse(cx, cy, rx, ry, t = DIRT) {
+      for (let y = cy - ry; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) {
+        const dx = (x - cx) / rx, dy = (y - cy) / ry;
+        if (dx * dx + dy * dy <= 1) fill(x, y, t);
+      }
+    },
+    acid(x, y, w, h) { acids.push({ x, y, w, h }); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Game state
+// ---------------------------------------------------------------------------
+let G = null;
+let progress = { unlocked: 0, best: {} };
+try { const p = JSON.parse(localStorage.getItem('wanderbots-progress')); if (p && typeof p.unlocked === 'number') progress = p; } catch (e) {}
+function saveProgress() { try { localStorage.setItem('wanderbots-progress', JSON.stringify(progress)); } catch (e) {} }
+
+let botId = 0;
+function startLevel(i) {
+  const def = LEVELS[i];
+  terr.fill(EMPTY);
+  const acids = [];
+  def.build(levelAPI(acids));
+  G = {
+    index: i, def, acids, bots: [], parts: [], tick: 0, spawned: 0, saved: 0, lost: 0,
+    rate: def.rate, minRate: def.rate, spawnTimer: 0, skills: Object.assign({}, def.skills),
+    selected: null, paused: false, fast: false, over: false, running: true,
+    timeLeft: def.time * TPS, entrance: def.entrance, exit: null,
+  };
+  // resolve exit onto the actual ground surface
+  const ex = def.exit.x; let ey = def.exit.y - 20;
+  while (ey < H - 1 && !solid(ex, ey + 1)) ey++;
+  G.exit = { x: ex, y: ey };
+  // clear a little space for the portal
+  for (let y = ey - 22; y <= ey; y++) for (let x = ex - 9; x <= ex + 9; x++) if (T(x, y) === DIRT) terr[y * W + x] = EMPTY;
+  G.selected = SKILLS.find(s => (G.skills[s.id] || 0) > 0)?.id || null;
+  refreshTerrain(true);
+  buildBackground();
+  buildHUD();
+}
+
+function rateInterval(r) { return Math.round(96 - r * 7.5); }
+
+function spawnBot() {
+  G.spawned++;
+  G.bots.push({ id: ++botId, x: G.entrance.x, y: G.entrance.y, dir: 1, state: 'fall', t: 0, fall: 0,
+    climber: false, glider: false, bricks: 0, fx: 0, fy: 0, vx: 0, vy: 0, apex: 0, boing: 0, gone: false });
+  sfx('spawn');
+}
+
+function setState(b, s) { b.state = s; b.t = 0; if (s === 'fall') b.fall = 0; }
+
+function kill(b, how) {
+  if (b.state === 'die') return;
+  setState(b, 'die');
+  G.lost++;
+  const cols = how === 'melt' ? ['#b6ff3b', '#7cff6a', '#e6ff9a'] : ['#4dd0e1', '#e0f7fa', '#ffb74d', '#90a4ae'];
+  if (how !== 'void') for (let i = 0; i < 16; i++) {
+    G.parts.push({ x: b.x, y: b.y - 5, vx: (Math.random() - .5) * 3, vy: -Math.random() * 3 - (how === 'melt' ? 0 : 1),
+      life: 30 + Math.random() * 20, c: cols[i % cols.length], g: how === 'melt' ? 0.05 : 0.18 });
+  }
+  sfx(how === 'melt' ? 'melt' : 'splat');
+}
+
+function dust(x, y, n) {
+  const p = G.def.pal.a;
+  for (let i = 0; i < n; i++) G.parts.push({ x, y, vx: (Math.random() - .5) * 1.6, vy: -Math.random() * 1.5,
+    life: 12 + Math.random() * 10, c: `rgb(${p[0]},${p[1]},${p[2]})`, g: 0.15 });
+}
+
+// ---------------------------------------------------------------------------
+// Bot behaviours
+// ---------------------------------------------------------------------------
+function updateBot(b) {
+  b.t++;
+  if (b.boing > 0) b.boing--;
+  switch (b.state) {
+    case 'fall': doFall(b); break;
+    case 'glide': doGlide(b); break;
+    case 'walk': doWalk(b); break;
+    case 'climb': doClimb(b); break;
+    case 'block': case 'spring': if (!solid(b.x, b.y + 1)) setState(b, 'fall'); break;
+    case 'build': doBuild(b); break;
+    case 'tunnel': doTunnel(b); break;
+    case 'dig': doDig(b); break;
+    case 'jump': doJump(b); break;
+    case 'exit': if (b.t > 18) { b.gone = true; G.saved++; } return;
+    case 'die': if (b.t > 4) b.gone = true; return;
+  }
+  if (b.state === 'die' || b.state === 'exit') return;
+  if (b.y > H + 8) { kill(b, 'void'); return; }
+  for (const a of G.acids) {
+    if (b.x >= a.x && b.x < a.x + a.w && b.y >= a.y && b.y < a.y + a.h) { kill(b, 'melt'); return; }
+  }
+  const e = G.exit;
+  if ((b.state === 'walk' || b.state === 'fall' || b.state === 'glide' || b.state === 'jump') &&
+      Math.abs(b.x - e.x) <= 4 && b.y <= e.y && b.y >= e.y - 12) {
+    setState(b, 'exit'); b.y = e.y; sfx('exit');
+  }
+}
+
+function doWalk(b) {
+  const nx = b.x + b.dir;
+  for (const o of G.bots) {
+    if (o === b || Math.abs(o.y - b.y) > 9) continue;
+    if (o.state === 'block' && Math.abs(nx - o.x) <= 4 && Math.abs(nx - o.x) < Math.abs(b.x - o.x)) {
+      b.dir = -b.dir; return;
+    }
+    if (o.state === 'spring' && nx === o.x && Math.abs(o.y - b.y) <= 3) {
+      b.x = nx; o.boing = 8; launch(b); sfx('boing'); return;
+    }
+  }
+  if (solid(nx, b.y)) {
+    let h = 0;
+    while (h <= 6 && solid(nx, b.y - h)) h++;
+    if (h <= 6) { b.x = nx; b.y -= h; }
+    else if (b.climber) setState(b, 'climb');
+    else b.dir = -b.dir;
+  } else {
+    let d = 0;
+    while (d <= 3 && !solid(nx, b.y + 1 + d)) d++;
+    b.x = nx;
+    if (d <= 3) b.y += d;
+    else setState(b, 'fall');
+  }
+}
+
+function launch(b) {
+  setState(b, 'jump');
+  b.fx = b.x; b.fy = b.y; b.vx = b.dir * 1.8; b.vy = -4.6; b.apex = b.y;
+}
+
+function land(b, dist) {
+  while (solid(b.x, b.y) && b.y > 0) b.y--;
+  if (dist > SAFE_FALL) kill(b, 'splat');
+  else setState(b, 'walk');
+}
+
+function doFall(b) {
+  for (let i = 0; i < 3; i++) {
+    if (solid(b.x, b.y + 1)) { land(b, b.fall); return; }
+    b.y++; b.fall++;
+    if (b.y > H + 8) return;
+  }
+  if (b.glider && b.fall > 20) { setState(b, 'glide'); sfx('glide'); }
+}
+
+function doGlide(b) {
+  if (solid(b.x, b.y + 1)) { land(b, 0); return; }
+  b.y++;
+  if (b.t % 3 === 0 && !solid(b.x + b.dir, b.y) && !solid(b.x + b.dir, b.y - 6)) b.x += b.dir;
+}
+
+function doClimb(b) {
+  if (b.t % 2) return;
+  if (solid(b.x, b.y - 11)) { b.dir = -b.dir; setState(b, 'fall'); return; }
+  b.y--;
+  if (!solid(b.x + b.dir, b.y)) { b.x += b.dir; setState(b, 'walk'); }
+}
+
+function doBuild(b) {
+  if (b.t % 7 !== 0) return;
+  for (let i = 0; i < 5; i++) { const px = b.x + b.dir * i; if (!solid(px, b.y)) setT(px, b.y, BRICK); }
+  b.bricks--;
+  sfx(b.bricks <= 2 ? 'warn' : 'brick');
+  const ax = b.x + b.dir * 2;
+  if (solid(ax, b.y - 3) || solid(ax, b.y - 7) || solid(b.x, b.y - 11)) {
+    if (solid(b.x, b.y)) b.y--;
+    setState(b, 'walk'); return;
+  }
+  b.x = ax; b.y -= 1;
+  if (b.bricks <= 0) setState(b, 'walk');
+}
+
+function dirtAhead(b, range) {
+  for (let i = 1; i <= range; i++) for (let r = 0; r <= 9; r++) if (soft(T(b.x + b.dir * i, b.y - r))) return true;
+  return false;
+}
+
+function doTunnel(b) {
+  if (b.t % 2) return;
+  for (let i = 1; i <= 5; i++) for (let r = 0; r <= 9; r++) {
+    if (T(b.x + b.dir * i, b.y - r) === STEEL) { sfx('clank'); setState(b, 'walk'); return; }
+  }
+  let any = false;
+  for (let i = 1; i <= 5; i++) for (let r = 0; r <= 9; r++) {
+    const x = b.x + b.dir * i, y = b.y - r;
+    if (soft(T(x, y))) { setT(x, y, EMPTY); any = true; }
+  }
+  if (any && b.t % 6 === 0) dust(b.x + b.dir * 5, b.y - 4, 2);
+  b.x += b.dir;
+  if (!solid(b.x, b.y + 1)) {
+    if (solid(b.x, b.y + 2)) b.y++;
+    else { setState(b, 'fall'); return; }
+  }
+  if (!dirtAhead(b, 12)) setState(b, 'walk');
+}
+
+function doDig(b) {
+  if (b.t % 4) return;
+  const row = b.y + 1;
+  for (let i = -1; i <= 1; i++) if (T(b.x + i, row) === STEEL) { sfx('clank'); setState(b, 'walk'); return; }
+  let any = false;
+  for (let i = -4; i <= 4; i++) {
+    if (soft(T(b.x + i, row))) { setT(b.x + i, row, EMPTY); any = true; }
+  }
+  if (!any) { setState(b, 'fall'); return; }
+  if (b.t % 8 === 0) dust(b.x, b.y, 2);
+  b.y++;
+}
+
+function doJump(b) {
+  b.vy += 0.3;
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.vx), Math.abs(b.vy)) * 2));
+  for (let s = 0; s < steps; s++) {
+    // horizontal
+    if (b.vx !== 0) {
+      const nx = b.fx + b.vx / steps;
+      const rx = Math.round(nx), ry = Math.round(b.fy);
+      if (solid(rx, ry - 4) || solid(rx, ry - 8)) b.vx = 0;
+      else {
+        b.fx = nx;
+        if (solid(rx, ry)) {
+          let h = 0; while (h < 5 && solid(rx, ry - h)) h++;
+          if (h < 5) b.fy -= h; else { b.fx -= b.vx / steps; b.vx = 0; }
+        }
+      }
+    }
+    // vertical
+    const ny = b.fy + b.vy / steps;
+    const cx = Math.round(b.fx);
+    if (b.vy < 0) {
+      if (solid(cx, Math.round(ny) - 10)) b.vy = 0; else b.fy = ny;
+    } else {
+      if (solid(cx, Math.floor(ny) + 1)) {
+        b.x = cx; b.y = Math.floor(ny);
+        land(b, b.y - b.apex); return;
+      }
+      b.fy = ny;
+    }
+    b.apex = Math.min(b.apex, b.fy);
+  }
+  b.x = Math.round(b.fx); b.y = Math.round(b.fy);
+  if (b.glider && b.vy > 0 && b.fy - b.apex > 20) { setState(b, 'glide'); sfx('glide'); }
+}
+
+// ---------------------------------------------------------------------------
+// Skill assignment
+// ---------------------------------------------------------------------------
+const WORKING = ['walk', 'block', 'spring', 'build', 'tunnel', 'dig'];
+function canAssign(b, s) {
+  if (!b || b.state === 'die' || b.state === 'exit') return false;
+  if (s === 'climb') return !b.climber;
+  if (s === 'glide') return !b.glider;
+  if (!WORKING.includes(b.state) || b.state === s) return false;
+  if (s === 'tunnel') return dirtAhead(b, 12);
+  if (s === 'dig') return T(b.x, b.y + 1) !== STEEL;
+  return true;
+}
+function assign(b, s) {
+  if (!s || !(G.skills[s] > 0) || !canAssign(b, s)) { sfx('nope'); return false; }
+  G.skills[s]--;
+  if (s === 'climb') b.climber = true;
+  else if (s === 'glide') b.glider = true;
+  else {
+    if (solid(b.x, b.y) && !solid(b.x, b.y - 1)) b.y--;
+    setState(b, s);
+    if (s === 'build') b.bricks = 12;
+  }
+  sfx('assign');
+  updateHUD();
+  return true;
+}
+function botAt(wx, wy, skill) {
+  let best = null, bestD = 1e9;
+  for (const b of G.bots) {
+    if (b.state === 'die' || b.state === 'exit') continue;
+    const dx = Math.abs(b.x - wx), dy = wy - (b.y - 5);
+    if (dx > 5 || dy < -8 || dy > 7) continue;
+    let d = dx * dx + dy * dy;
+    if (skill && !canAssign(b, skill)) d += 1000;
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Simulation tick
+// ---------------------------------------------------------------------------
+function step() {
+  if (!G || G.over) return;
+  G.tick++;
+  if (G.tick > 30 && G.spawned < G.def.bots) {
+    if (--G.spawnTimer <= 0) { spawnBot(); G.spawnTimer = rateInterval(G.rate); }
+  }
+  for (let i = 0; i < G.bots.length; i++) updateBot(G.bots[i]);
+  G.bots = G.bots.filter(b => !b.gone);
+  for (const p of G.parts) { p.x += p.vx; p.y += p.vy; p.vy += p.g; p.life--; }
+  G.parts = G.parts.filter(p => p.life > 0);
+  G.timeLeft--;
+  if (G.timeLeft <= 0) endLevel('time');
+  else if (G.spawned === G.def.bots && G.bots.every(b => b.state === 'block' || b.state === 'spring')) endLevel('done');
+}
+
+function endLevel(why) {
+  if (G.over) return;
+  G.over = true;
+  G.saved += G.bots.filter(b => b.state === 'exit').length;
+  const remaining = G.bots.filter(b => b.state !== 'exit' && b.state !== 'die').length;
+  const outLeft = G.def.bots - G.spawned;
+  G.lost += remaining + outLeft;
+  const pass = G.saved >= G.def.need;
+  if (pass) {
+    progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length - 1, G.index + 1));
+    progress.best[G.index] = Math.max(progress.best[G.index] || 0, G.saved);
+    if (G.index === LEVELS.length - 1) progress.allDone = true;
+    saveProgress();
+  }
+  sfx(pass ? 'win' : 'lose');
+  const ended = G;
+  setTimeout(() => { if (G === ended && G.running) showResult(pass, why); }, 600);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const bgc = document.createElement('canvas'); bgc.width = W * S; bgc.height = H * S;
+const bgx = bgc.getContext('2d');
+
+function buildBackground() {
+  const pal = G.def.pal;
+  const gr = bgx.createLinearGradient(0, 0, 0, H * S);
+  gr.addColorStop(0, pal.sky[0]); gr.addColorStop(1, pal.sky[1]);
+  bgx.fillStyle = gr; bgx.fillRect(0, 0, W * S, H * S);
+  // distant cave silhouettes
+  for (let layer = 0; layer < 2; layer++) {
+    bgx.fillStyle = layer ? 'rgba(0,0,0,.22)' : 'rgba(255,255,255,.035)';
+    bgx.beginPath();
+    bgx.moveTo(0, H * S);
+    const base = layer ? H * S * 0.78 : H * S * 0.6, amp = layer ? 60 : 90, ph = G.index * 1.7 + layer * 3;
+    for (let x = 0; x <= W * S; x += 16) {
+      bgx.lineTo(x, base - Math.abs(Math.sin(x * 0.006 + ph)) * amp - Math.sin(x * 0.021 + ph) * 18);
+    }
+    bgx.lineTo(W * S, H * S); bgx.closePath(); bgx.fill();
+    // stalactites
+    bgx.beginPath();
+    for (let x = 0; x < W * S; x += 22 + (hash(x, layer) % 30)) {
+      const len = 20 + hash(x, 7 + layer) % (layer ? 70 : 120);
+      bgx.moveTo(x - 10, 0); bgx.lineTo(x, len); bgx.lineTo(x + 10, 0);
+    }
+    bgx.fill();
+  }
+  // glowing specks / crystals
+  for (let i = 0; i < 90; i++) {
+    const x = hash(i, G.index) % (W * S), y = hash(G.index, i) % (H * S);
+    const a = 0.15 + (hash(i, i) % 100) / 220;
+    bgx.fillStyle = `rgba(${pal.top[0]},${pal.top[1]},${pal.top[2]},${a})`;
+    const s = 1 + hash(i, 3) % 3;
+    bgx.fillRect(x, y, s, s);
+  }
+}
+
+function render(now) {
+  if (!G) { ctx.fillStyle = '#05070d'; ctx.fillRect(0, 0, cv.width, cv.height); return; }
+  refreshTerrain(false);
+  ctx.drawImage(bgc, 0, 0);
+  drawExit(now);
+  ctx.drawImage(tcv, 0, 0, W * S, H * S);
+  drawAcids(now);
+  drawEntrance();
+  for (const b of G.bots) drawBot(b);
+  for (const p of G.parts) { ctx.fillStyle = p.c; ctx.globalAlpha = Math.min(1, p.life / 15); ctx.fillRect(p.x * S, p.y * S, 3, 3); }
+  ctx.globalAlpha = 1;
+  // hover highlight
+  if (mouse.in && !G.over) {
+    const b = botAt(mouse.x, mouse.y, G.selected);
+    hovered = b;
+    if (b) {
+      const ok = G.selected && G.skills[G.selected] > 0 && canAssign(b, G.selected);
+      ctx.strokeStyle = ok ? '#ffffff' : 'rgba(255,255,255,.4)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect((b.x - 5) * S, (b.y - 12) * S, 11 * S, 14 * S);
+    }
+  } else hovered = null;
+  if (G.paused && !G.over) {
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(0, 0, cv.width, 44);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('PAUSED: you can still hand out skills', cv.width / 2, 30); ctx.textAlign = 'left';
+  }
+  updateStatus();
+}
+
+function drawAcids(now) {
+  for (const a of G.acids) {
+    const x = a.x * S, y = a.y * S, w = a.w * S, h = a.h * S;
+    const gr = ctx.createLinearGradient(0, y, 0, y + h);
+    gr.addColorStop(0, 'rgba(150,255,60,.85)'); gr.addColorStop(1, 'rgba(40,140,30,.95)');
+    ctx.fillStyle = gr; ctx.fillRect(x, y + 2, w, h - 2);
+    ctx.fillStyle = '#d8ff8a';
+    for (let i = 0; i < w; i += 4) {
+      const wy = Math.sin(now * 0.004 + i * 0.08) * 2;
+      ctx.fillRect(x + i, y + wy, 4, 3);
+    }
+    for (let i = 0; i < a.w / 8; i++) {
+      const ph = ((now * 0.0006 + (hash(i, a.x) % 100) / 100) % 1);
+      const bx = x + (hash(a.x, i) % Math.max(1, w - 6)) + 3;
+      const by = y + h - ph * (h - 4);
+      ctx.fillStyle = `rgba(230,255,170,${0.7 * (1 - ph)})`;
+      ctx.fillRect(bx, by, 3, 3);
+    }
+  }
+}
+
+function drawEntrance() {
+  const e = G.entrance, x = e.x * S, y = e.y * S;
+  const open = Math.min(1, G.tick / 30);
+  ctx.fillStyle = '#37425f'; ctx.fillRect(x - 30, y - 36, 60, 22);
+  ctx.fillStyle = '#56648c'; ctx.fillRect(x - 30, y - 36, 60, 5);
+  ctx.fillStyle = '#ffb74d';
+  for (let i = 0; i < 6; i++) ctx.fillRect(x - 26 + i * 10, y - 22, 5, 4);
+  ctx.fillStyle = '#121828'; ctx.fillRect(x - 18, y - 14, 36, 6);
+  ctx.fillStyle = '#56648c';
+  const d = 18 * open;
+  ctx.fillRect(x - 18 - d, y - 14, 18, 6); ctx.fillRect(x + d, y - 14, 18, 6);
+  ctx.fillStyle = (G.tick >> 3) % 2 && G.spawned < G.def.bots ? '#7bd88f' : '#2e5236';
+  ctx.fillRect(x - 3, y - 33, 6, 4);
+}
+
+function drawExit(now) {
+  const e = G.exit, x = (e.x + 0.5) * S, y = (e.y + 1) * S;
+  ctx.save();
+  ctx.fillStyle = '#2a2f45'; ctx.fillRect(x - 20, y - 44, 6, 44); ctx.fillRect(x + 14, y - 44, 6, 44);
+  ctx.fillRect(x - 22, y - 48, 44, 6);
+  ctx.fillStyle = '#4d5677'; ctx.fillRect(x - 20, y - 44, 2, 44); ctx.fillRect(x + 14, y - 44, 2, 44);
+  const g = ctx.createRadialGradient(x, y - 20, 2, x, y - 20, 22);
+  g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(.4, 'rgba(120,220,255,.75)'); g.addColorStop(1, 'rgba(150,80,255,.05)');
+  ctx.fillStyle = g; ctx.fillRect(x - 14, y - 42, 28, 42);
+  ctx.strokeStyle = 'rgba(200,240,255,.7)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const a = now * 0.003 + i * 2.1;
+    ctx.beginPath(); ctx.ellipse(x, y - 20, 10, 18, 0, a, a + 1.6); ctx.stroke();
+  }
+  ctx.fillStyle = '#ffb74d'; ctx.fillRect(x - 6, y - 47, 12, 3);
+  ctx.restore();
+}
+
+function drawBot(b) {
+  let X = Math.round((b.x + 0.5) * S), Y = (b.y + 1) * S;
+  const dir = b.dir;
+  ctx.save();
+  if (b.state === 'die') { ctx.restore(); return; }
+  if (b.state === 'exit') { ctx.globalAlpha = Math.max(0, 1 - b.t / 18); Y -= b.t * 1.5; }
+  const P = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X + (dir > 0 ? x : -x - w), Y + y, w, h); };
+  const body = '#3fb8c9', bodyD = '#2a7f8c', head = '#e3f6fa', leg = '#5a6380';
+  const arm = b.climber ? '#ffd54f' : bodyD;
+  const st = b.state;
+  const f = (b.t >> 1) & 3;
+
+  if (st === 'spring') {
+    const sq = b.boing > 0 ? (b.boing > 4 ? 4 : -2) : 0;
+    ctx.strokeStyle = '#c0c6d8'; ctx.lineWidth = 2; ctx.beginPath();
+    const top = Y - 9 + sq;
+    for (let i = 0; i <= 4; i++) ctx.lineTo(X + (i % 2 ? 4 : -4), Y - i * (Y - top) / 4);
+    ctx.stroke();
+    P(-6, -1, 12, 2, '#7c849e');
+    ctx.fillStyle = body; ctx.fillRect(X - 5, top - 6, 10, 6);
+    ctx.fillStyle = head; ctx.fillRect(X - 4, top - 12, 8, 6);
+    ctx.fillStyle = '#ffb74d'; ctx.fillRect(X - 6, top - 7, 12, 2);
+    ctx.fillStyle = '#0b1a2a'; ctx.fillRect(X - 2, top - 10, 4, 2);
+    ctx.restore(); return;
+  }
+
+  if (st === 'glide') {
+    ctx.fillStyle = '#ff8a65';
+    ctx.beginPath(); ctx.ellipse(X, Y - 30, 14, 6, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#ffccbc'; ctx.fillRect(X - 14, Y - 31, 28, 1);
+    ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X - 12, Y - 30); ctx.lineTo(X - 3, Y - 14); ctx.moveTo(X + 12, Y - 30); ctx.lineTo(X + 3, Y - 14); ctx.stroke();
+  }
+
+  // legs
+  if (st === 'walk' || st === 'climb') {
+    P(-3, f === 1 ? -5 : -4, 2, f === 1 ? 4 : 4, leg);
+    P(1, f === 3 ? -5 : -4, 2, 4, leg);
+  } else if (st === 'fall' || st === 'jump') {
+    P(-3, -4, 2, 3, leg); P(1, -5, 2, 3, leg);
+  } else {
+    P(-3, -4, 2, 4, leg); P(1, -4, 2, 4, leg);
+  }
+  const bob = (st === 'dig' && (b.t >> 1) % 2) ? 1 : 0;
+  // backpack (glider)
+  if (b.glider && st !== 'glide') P(-6, -12 + bob, 2, 6, '#ff8a65');
+  // body
+  P(-4, -11 + bob, 8, 7, body);
+  P(-3, -10 + bob, 6, 1, '#8ee6f0');
+  // head
+  P(-4, -18 + bob, 8, 7, head);
+  P(0, -16 + bob, 4, 3, '#0b1a2a');
+  const eye = st === 'block' ? '#ff5252' : '#7bffb0';
+  P(2, -15 + bob, 1, 1, eye);
+  P(-1, -21 + bob, 1, 3, '#9aa3bd');
+  P(-2, -22 + bob, 3, 2, b.climber && b.glider ? '#ffffff' : b.climber ? '#ffd54f' : b.glider ? '#ff8a65' : '#ff5252');
+
+  switch (st) {
+    case 'block':
+      P(-9, -10, 5, 2, '#ffb74d'); P(4, -10, 5, 2, '#ffb74d');
+      P(-10, -11, 1, 4, arm); P(9, -11, 1, 4, arm);
+      break;
+    case 'fall': case 'jump':
+      P(-5, -15, 1, 4, arm); P(4, -15, 1, 4, arm);
+      break;
+    case 'glide':
+      P(-5, -15, 1, 3, arm); P(4, -15, 1, 3, arm);
+      break;
+    case 'climb':
+      P(4, -16 + (f & 1) * 2, 2, 3, arm); P(4, -10 - (f & 1) * 2, 2, 3, arm);
+      break;
+    case 'build':
+      P(4, -9, 1, 3, arm);
+      P(4, -7 + ((b.t % 7) < 3 ? 1 : 0), 6, 2, '#dca860');
+      break;
+    case 'tunnel': {
+      P(4, -9, 2, 4, arm);
+      P(6, -9, 3, 4, '#b0b8cc');
+      P(9, (b.t & 2) ? -8 : -7, 2, 2, '#e8ecf6');
+      break;
+    }
+    case 'dig':
+      P(-5, -8 + bob, 1, 4, arm); P(4, -8 + bob, 1, 4, arm);
+      P(-2, -1, 4, 2, (b.t & 2) ? '#e8ecf6' : '#b0b8cc');
+      break;
+    default:
+      P(-5, -10, 1, 4, arm); P(4, -10, 1, 4, arm);
+  }
+  if (st === 'build' && b.bricks <= 2 && (b.t >> 2) % 2) P(-1, -27, 2, 3, '#ffb74d');
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// HUD / UI
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+let hovered = null;
+const mouse = { x: 0, y: 0, in: false };
+
+function skillIcon(id) {
+  const c = '#4dd0e1', o = '#ffb74d';
+  const icons = {
+    climb: `<path d="M22 4v24" stroke="#90a4ae" stroke-width="3"/><rect x="12" y="8" width="7" height="8" fill="${c}"/><rect x="18" y="7" width="3" height="3" fill="#ffd54f"/><rect x="18" y="14" width="3" height="3" fill="#ffd54f"/><rect x="12" y="17" width="2" height="6" fill="#5a6380"/>`,
+    glide: `<path d="M4 12 Q16 0 28 12 Z" fill="#ff8a65"/><path d="M6 12 L14 20 M26 12 L18 20" stroke="#fff" stroke-width="1"/><rect x="13" y="19" width="6" height="8" fill="${c}"/>`,
+    block: `<rect x="13" y="8" width="6" height="16" fill="${c}"/><rect x="4" y="13" width="24" height="3" fill="${o}"/><rect x="13" y="24" width="2" height="5" fill="#5a6380"/><rect x="17" y="24" width="2" height="5" fill="#5a6380"/>`,
+    spring: `<path d="M10 28 L22 25 L10 22 L22 19 L10 16" stroke="#c0c6d8" stroke-width="2" fill="none"/><rect x="11" y="8" width="10" height="7" fill="${c}"/><path d="M20 6 q6 -4 8 2" stroke="${o}" stroke-width="2" fill="none"/>`,
+    build: `<rect x="4" y="25" width="8" height="3" fill="#dca860"/><rect x="10" y="20" width="8" height="3" fill="#dca860"/><rect x="16" y="15" width="8" height="3" fill="#dca860"/><rect x="22" y="10" width="8" height="3" fill="#dca860"/>`,
+    tunnel: `<rect x="2" y="6" width="28" height="22" fill="#8d6e63"/><rect x="2" y="14" width="18" height="12" fill="#1d2542"/><rect x="10" y="16" width="6" height="8" fill="${c}"/><path d="M16 18 l6 2 l-6 2z" fill="#e8ecf6"/>`,
+    dig: `<rect x="4" y="16" width="24" height="14" fill="#8d6e63"/><rect x="11" y="16" width="10" height="14" fill="#1d2542"/><rect x="13" y="6" width="6" height="12" fill="${c}"/><path d="M14 18 l2 6 l2 -6z" fill="#e8ecf6"/>`,
+  };
+  return `<svg class="ico" viewBox="0 0 32 32">${icons[id]}</svg>`;
+}
+
+function buildHUD() {
+  const box = $('skills'); box.innerHTML = '';
+  for (const s of SKILLS) {
+    const btn = document.createElement('button');
+    btn.className = 'btn skill'; btn.dataset.id = s.id; btn.title = `${s.name}: ${s.desc}`;
+    btn.innerHTML = `<span class="key">${s.key}</span>${skillIcon(s.id)}<span class="nm">${s.name}</span><span class="ct"></span>`;
+    btn.onclick = () => selectSkill(s.id);
+    box.appendChild(btn);
+  }
+  updateHUD();
+}
+function selectSkill(id) {
+  if (!G || !(G.skills[id] > 0)) { sfx('nope'); return; }
+  G.selected = id; sfx('tick'); updateHUD();
+}
+function updateHUD() {
+  if (!G) return;
+  for (const btn of $('skills').children) {
+    const n = G.skills[btn.dataset.id] || 0;
+    btn.querySelector('.ct').textContent = n;
+    btn.disabled = n === 0;
+    btn.classList.toggle('sel', G.selected === btn.dataset.id);
+    btn.classList.toggle('empty', n === 0);
+  }
+  $('rateV').textContent = G.rate;
+  $('bPause').classList.toggle('on', G.paused);
+  $('bPause').textContent = G.paused ? 'Resume' : 'Pause';
+  $('bFast').classList.toggle('on', G.fast);
+}
+const stateName = { walk: 'Walker', fall: 'Falling', glide: 'Gliding', climb: 'Climbing', block: 'Blocker', spring: 'Spring',
+  build: 'Builder', tunnel: 'Tunneller', dig: 'Digger', jump: 'Airborne', exit: 'Warping', die: '' };
+let lastStatus = '';
+function updateStatus() {
+  if (!G) { if (lastStatus) { $('status').innerHTML = ''; lastStatus = ''; } return; }
+  const out = G.bots.filter(b => b.state !== 'die' && b.state !== 'exit').length;
+  const secs = Math.max(0, Math.ceil(G.timeLeft / TPS));
+  let hov = '';
+  if (hovered) {
+    const extra = [hovered.climber && 'Climber', hovered.glider && 'Glider'].filter(Boolean).join(' + ');
+    hov = `<span>Bot: <b>${stateName[hovered.state]}${extra ? ' (' + extra + ')' : ''}</b></span>`;
+  }
+  const html = `<span>Level <b>${G.index + 1}</b>: ${G.def.name}</span>` +
+    `<span>To drop: <b>${G.def.bots - G.spawned}</b></span><span>Out: <b>${out}</b></span>` +
+    `<span>Saved: <b>${G.saved}</b> <span class="need">/ need ${G.def.need}</span></span>` +
+    `<span>Lost: <b>${G.lost}</b></span>` +
+    `<span>Time: <b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b></span>` + hov;
+  if (html !== lastStatus) { $('status').innerHTML = html; lastStatus = html; }
+}
+
+function showMenu() {
+  if (G) { G.running = false; }
+  hideAll(); $('menu').classList.remove('hidden');
+  const list = $('levelList'); list.innerHTML = '';
+  LEVELS.forEach((L, i) => {
+    const b = document.createElement('button');
+    b.className = 'btn lvl';
+    const locked = i > progress.unlocked;
+    b.disabled = locked;
+    const best = progress.best[i];
+    b.innerHTML = `<div class="n">LEVEL ${i + 1}${locked ? ' · locked' : ''}</div><div class="t">${L.name}</div>` +
+      `<div class="s">${best != null ? `Best: ${best}/${L.bots} saved` : '&nbsp;'}</div>`;
+    b.onclick = () => showBrief(i);
+    list.appendChild(b);
+  });
+}
+function showBrief(i) {
+  startLevel(i); G.running = false;
+  hideAll(); $('brief').classList.remove('hidden');
+  const L = LEVELS[i];
+  $('briefNum').textContent = `Level ${i + 1} of ${LEVELS.length}`;
+  $('briefTitle').textContent = L.name;
+  $('briefHint').textContent = L.hint;
+  $('briefStats').innerHTML = `<div><b>${L.bots}</b>bots</div><div><b>${L.need}</b>must be saved</div>` +
+    `<div><b>${Math.floor(L.time / 60)}:${String(L.time % 60).padStart(2, '0')}</b>time limit</div>`;
+  $('briefSkills').innerHTML = SKILLS.filter(s => L.skills[s.id]).map(s => `<span class="chip">${s.name} × ${L.skills[s.id]}</span>`).join('');
+}
+function showResult(pass, why) {
+  hideAll(); $('result').classList.remove('hidden');
+  const last = G.index === LEVELS.length - 1;
+  $('resTitle').innerHTML = pass ? (last ? '<span class="pass">All levels complete!</span>' : '<span class="pass">Level complete</span>') : '<span class="fail">Not enough bots made it</span>';
+  $('resText').textContent = why === 'time' ? 'Time ran out.' : pass ? (last ? 'Every crate of bots made it home. Nice work.' : 'The warp gate hums happily.') : 'Have another go: try pausing to plan your moves.';
+  const pct = Math.round(G.saved / G.def.bots * 100);
+  $('resStats').innerHTML = `<div><b>${G.saved}</b>saved</div><div><b>${G.def.need}</b>needed</div><div><b>${pct}%</b>rescued</div>`;
+  $('resNext').classList.toggle('hidden', !pass || last);
+}
+function hideAll() { for (const id of ['menu', 'brief', 'result']) $(id).classList.add('hidden'); }
+
+function begin() { hideAll(); G.running = true; G.paused = false; updateHUD(); }
+
+$('briefGo').onclick = begin;
+$('briefBack').onclick = showMenu;
+$('resMenu').onclick = showMenu;
+$('resRetry').onclick = () => showBrief(G.index);
+$('resNext').onclick = () => showBrief(G.index + 1);
+$('bMenu').onclick = showMenu;
+$('bRestart').onclick = () => { if (G) { startLevel(G.index); begin(); } };
+$('bFinish').onclick = () => { if (G && G.running && !G.over) endLevel('done'); };
+$('bPause').onclick = () => { if (G) { G.paused = !G.paused; updateHUD(); } };
+$('bFast').onclick = () => { if (G) { G.fast = !G.fast; updateHUD(); } };
+$('rateUp').onclick = () => { if (G && G.rate < 10) { G.rate++; updateHUD(); } };
+$('rateDn').onclick = () => { if (G && G.rate > G.minRate) { G.rate--; updateHUD(); } };
+$('bSound').onclick = () => { soundOn = !soundOn; $('bSound').textContent = 'Sound: ' + (soundOn ? 'on' : 'off'); };
+
+function toWorld(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: Math.floor((e.clientX - r.left) / r.width * W), y: Math.floor((e.clientY - r.top) / r.height * H) };
+}
+cv.addEventListener('mousemove', e => { const p = toWorld(e); mouse.x = p.x; mouse.y = p.y; mouse.in = true; });
+cv.addEventListener('mouseleave', () => { mouse.in = false; });
+cv.addEventListener('mousedown', e => {
+  if (!G || !G.running || G.over) return;
+  const p = toWorld(e);
+  const b = botAt(p.x, p.y, G.selected);
+  if (b) assign(b, G.selected);
+});
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('keydown', e => {
+  if (!G || !G.running) { if (e.key === 'Escape') showMenu(); return; }
+  const s = SKILLS.find(s => s.key === e.key);
+  if (s) { selectSkill(s.id); return; }
+  switch (e.key.toLowerCase()) {
+    case ' ': case 'p': e.preventDefault(); $('bPause').click(); break;
+    case 'f': $('bFast').click(); break;
+    case 'r': $('bRestart').click(); break;
+    case 'escape': showMenu(); break;
+    case '+': case '=': $('rateUp').click(); break;
+    case '-': case '_': $('rateDn').click(); break;
+  }
+});
+
+function fit() {
+  const hudH = $('hud').offsetHeight + $('status').offsetHeight + 36;
+  const w = Math.min(window.innerWidth - 16, (window.innerHeight - hudH) * W / H);
+  cv.style.width = Math.max(320, Math.floor(w)) + 'px';
+  cv.style.height = Math.max(180, Math.floor(w * H / W)) + 'px';
+}
+window.addEventListener('resize', fit);
+
+// ---------------------------------------------------------------------------
+// Sound (tiny WebAudio synth)
+// ---------------------------------------------------------------------------
+let soundOn = true, actx = null;
+function tone(freq, dur, type = 'square', vol = 0.05, slide = 0) {
+  if (!soundOn) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch (e) {}
+}
+function sfx(n) {
+  if (G && G.fast && (n === 'brick' || n === 'spawn')) return;
+  switch (n) {
+    case 'assign': tone(660, .08); tone(990, .08, 'square', .03); break;
+    case 'tick': tone(1200, .03, 'square', .02); break;
+    case 'nope': tone(160, .1, 'sawtooth', .03); break;
+    case 'spawn': tone(420, .06, 'triangle', .03, 200); break;
+    case 'exit': tone(520, .15, 'triangle', .05, 600); break;
+    case 'splat': tone(200, .2, 'sawtooth', .05, -150); break;
+    case 'melt': tone(300, .3, 'sine', .06, -250); break;
+    case 'brick': tone(240, .03, 'square', .02); break;
+    case 'warn': tone(880, .05, 'square', .03); break;
+    case 'clank': tone(140, .12, 'square', .05); break;
+    case 'boing': tone(180, .2, 'sine', .07, 500); break;
+    case 'glide': tone(700, .12, 'sine', .03, -200); break;
+    case 'win': [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, .18, 'triangle', .06), i * 110)); break;
+    case 'lose': [392, 330, 262].forEach((f, i) => setTimeout(() => tone(f, .25, 'triangle', .06), i * 160)); break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(100, now - last); last = now;
+  if (G && G.running && !G.paused && !G.over) {
+    acc += dt * (G.fast ? 3 : 1);
+    const ms = 1000 / TPS; let n = 0;
+    while (acc >= ms && n < 30) { step(); acc -= ms; n++; }
+  } else acc = 0;
+  render(now);
+  requestAnimationFrame(frame);
+}
+fit();
+showMenu();
+requestAnimationFrame(frame);
+
+// Hook for automated tests
+window.__wb = { startLevel, step, assign, get G() { return G; }, LEVELS, solid, T };
+</script>
+</body>
+</html>

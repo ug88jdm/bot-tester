@@ -1,0 +1,23 @@
+# Copy to config.toml and edit. The admin password can also come from OTTD_ADMIN_PASSWORD,
+# and the Claude key from ANTHROPIC_API_KEY.
+
+[server]
+host = "127.0.0.1"
+admin_port = 3977
+admin_password = "change-me"     # must match admin_password in openttd.cfg [network]
+admin_name = "ottd-chatbot"
+
+[llm]
+enabled = true                   # false = rule-based parser only (fixed phrasings, no API key needed)
+model = "claude-opus-5-5"        # claude-haiku-5-5 is far cheaper and handles most requests
+effort = "medium"                # low | medium | high
+max_steps = 12                   # tool-call rounds per request
+server_side_fallbacks = true
+
+[bot]
+prefix = "!bot"                  # public/team chat must start with this; private messages to the server need no prefix
+reply = "private"                # private | team | public
+cooldown_seconds = 5
+history_turns = 4                # remembered exchanges per player, for follow-ups like "yes, do it"
+# fixed_company = 3              # build for this company (in-game number) instead of the sender's own
+# allowed_players = ["alice", "bob"]
